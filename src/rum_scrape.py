@@ -16,7 +16,7 @@ import pandas as pd
 import time
 
 
-def ScrapeRums(page_start=1, page_end=288, df_name='rum_data.csv'):
+def ScrapeRums(page_start=1, page_end=288, df_name='data/rum_data.csv', sleep_time=10):
     """ The main function that collects data from the rumrankings site, as scraping can take a while you
         can grab a page at a time. Currently 7/18/2020 288 is the last page. The price column is a premium
         feature on the site so that will be completely sparse. Additionally the site also combines the name
@@ -28,6 +28,7 @@ def ScrapeRums(page_start=1, page_end=288, df_name='rum_data.csv'):
         page_start : which page to start on, the initial page should be 1
         page_end : which page to stop on, this number is inclusive
         df_name : file name to load / save values from
+        sleep_time : how many seconds to sleep between requests
 
     Return:
         None
@@ -45,8 +46,10 @@ def ScrapeRums(page_start=1, page_end=288, df_name='rum_data.csv'):
         if req.status_code == 200:
             soup = bs4.BeautifulSoup(req.text, 'html.parser')
             results = soup.find_all('div', class_='rum-title')
-            for thing in results:
-                text = thing.text.strip(' \n').split('\n')
+
+            # name, country, type, price, and # of ratings are all jammed in the same tag
+            for r in results:
+                text = r.text.strip(' \n').split('\n')
                 names.append(text[0].strip(' '))
                 text = text[-1].split(' | ')
 
@@ -58,18 +61,19 @@ def ScrapeRums(page_start=1, page_end=288, df_name='rum_data.csv'):
                 price.append(text)
 
             results = soup.find_all('div', class_='rum-rating-icon')
-            for thing in results:
-                score.append(thing.text.strip(' \n'))
+            for r in results:
+                score.append(r.text.strip(' \n'))
 
             results = soup.find_all('img')
-            for thing in results[13:61:2]:
-                text = thing['data-src']
-                img_url.append(text)
+            # quite hacky, but there are quite a lot of other images on the page, each image is also dupcliated
+            for r in results[13:61:2]:
+                img_url.append(r['data-src'])
 
             results = soup.find_all('a', class_='thumbnail')
-            for thing in results:
-                rum_url.append(thing['href'])
+            for r in results:
+                rum_url.append(r['href'])
 
+            # not thrilled about this part, check the rum's name to see if it matches a known company, if not set to 'unkown'
             for name in names:
                 for c_name in company_names:
                     if name.startswith(c_name):
@@ -78,18 +82,21 @@ def ScrapeRums(page_start=1, page_end=288, df_name='rum_data.csv'):
                 else:
                     company.append('Unknown')
 
+            # create a new df from page results and append to what we already have, or create a brand new one
             try:
                 df = pd.read_csv(df_name)
-                to_add = pd.DataFrame({'name':names, 'country':country, 'type':types, 'ratings':ratings, 'price':price, 'score':score,
-                                'img_url':img_url, 'rum_url':rum_url, 'company':company})
-                df = df.append(to_add, ignore_index=True, sort=True)
-                df.to_csv(df_name, index=False)
             except:
-                print(f'{df_name} file not found!')
-            
-            time.sleep(10)
+                df = pd.DataFrame(columns=['name', 'country', 'type', 'ratings', 'price', 'score', 'img_url', 'rum_url', 'company'])
 
-def BayesianRum(in_file='rum_data.csv', out_file=None):
+            to_add = pd.DataFrame({'name':names, 'country':country, 'type':types, 'ratings':ratings, 'price':price, 'score':score, 'img_url':img_url, 'rum_url':rum_url, 'company':company})
+            df = df.append(to_add, ignore_index=True, sort=True)
+            df.to_csv(df_name, index=False)
+            
+            time.sleep(sleep_time)
+        else:
+            print('Connection Error!')
+
+def BayesianRum(in_file='data/rum_data.csv', out_file=None):
     """ As the original data set does not have any bayesian rating it can be difficult to figure out the
         popularity of any given rum, once all rum information has been collected we can calculate our own.
 
@@ -109,5 +116,5 @@ def BayesianRum(in_file='rum_data.csv', out_file=None):
     except:
         print(f'{in_file} not found!')
 
-# ScrapeRums()
-BayesianRum()
+if __name__ == '__main__':
+    print('Scrape Responsibly')
